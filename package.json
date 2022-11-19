@@ -1,0 +1,68 @@
+{
+  "name": "find-o-matic",
+  "author": "kennedn",
+  "version": "1.0.0",
+  "keywords": [
+    "pebble-app",
+    "hackathon1"
+  ],
+  "private": true,
+  "dependencies": {
+    "bluebird": "^3.7.2",
+    "buffer": "^6.0.3",
+    "pebble-clay": "git+https://github.com/kennedn/clay.git",
+    "sha1": "^1.1.1",
+    "xmlhttprequest": "^1.8.0"
+  },
+  "pebble": {
+    "displayName": "find-o-matic",
+    "uuid": "0ce2759f-3543-4d92-9233-199157c691c2",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "aplite",
+      "basalt",
+      "chalk",
+      "diorite"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "messageKeys": [
+      "Bearing",
+      "Distance",
+      "LocationString",
+      "LocationStringSize",
+      "Hash",
+      "Session",
+      "IconKey",
+      "IconIndex",
+      "TransferComplete",
+      "TransferIndex",
+      "TransferLength",
+      "TransferChunk",
+      "TransferChunkLength",
+      "TransferType"
+    ],
+    "resources": {
+      "media": [
+        {
+          "menuIcon": true,
+          "type": "png",
+          "name": "IMAGE_MENU_ICON",
+          "file": "images/menu_icon.png"
+        },
+        {
+          "file": "fonts/Ubuntu-B.ttf",
+          "name": "FONT_UBUNTU_BOLD_18",
+          "type": "font"
+        },
+        {
+          "type": "bitmap",
+          "name": "COMPASS_BACKGROUND",
+          "file": "images/compass_background.png"
+        }
+      ]
+    }
+  }
+}
