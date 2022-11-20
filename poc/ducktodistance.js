@@ -26,5 +26,5 @@ coords.forEach(item => {
   item.bearing = (equirectBearing(geo, item.coordinates));
 });
 
-coords.sort((a,b) => (a.distance > b.distance) ? -1 : 1);
+coords.sort((a,b) => (a.distance < b.distance) ? -1 : 1);
 console.log(coords);

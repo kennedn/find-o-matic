@@ -16,15 +16,18 @@ static void inbox(DictionaryIterator *dict, void *context) {
     Tuple *type_t = dict_find(dict, MESSAGE_KEY_TransferType);
     Tuple *bearing_t = dict_find(dict, MESSAGE_KEY_Bearing);
     Tuple *distance_t = dict_find(dict, MESSAGE_KEY_Distance);
+    Tuple *location_t = dict_find(dict, MESSAGE_KEY_LocationString);
     switch(type_t->value->int32) {
       case TRANSFER_TYPE_BEARING:
         debug(3, "Received bearing");
         s_clay_needs_config = false;
         debug(2, "Bearing: %d", (int)bearing_t->value->int32);
         debug(2, "Distance: %d", (int)distance_t->value->int32);
+        if(location_t) {
+          debug(2, "Name: %s", location_t->value->cstring);
+        }
 
-        update_heading_data(bearing_t->value->int32, distance_t->value->int32);
-        comm_bearing_request();
+        update_heading_data(bearing_t->value->int32, distance_t->value->int32, (location_t) ? location_t->value->cstring : NULL);
         break;
       case TRANSFER_TYPE_ERROR:
         debug(2, "Received error");

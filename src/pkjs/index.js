@@ -1,29 +1,93 @@
 require('./polyfills/strings');
-var coords = require('./data/coords');
 var globals = require('./modules/globals');
+var Promise = require('bluebird');
 for (var key in globals) {
   window[key] = globals[key];
 }
 var XHR = require('./modules/xhr');
 
+var geolocation = {};
+var coords = [];
+
+var geolocation_options =   {
+  enableHighAccuracy: true,
+  timeout: 5000,
+  maximumAge: 0
+};
+
+
 function radians(d) {return (d * Math.PI) / 180.0;}
 
-function equirectDistance(c1,c2) {
+// Calculate distance between two geo locations using equirect approximation
+function calculateDistance(c1,c2) {
   // Calculate latitude delta
-  x = radians(c2.latitude) - radians(c1.latitude);
+  var x = radians(c2.latitude) - radians(c1.latitude);
   // Calculate longitude delta and multiply with an approximate scaler based on the cosine of the median latitude
-  y = (radians(c2.longitude) - radians(c1.longitude)) * Math.cos((radians(c2.latitude) + radians(c1.latitude)) * 0.5);
+  var y = (radians(c2.longitude) - radians(c1.longitude)) * Math.cos((radians(c2.latitude) + radians(c1.latitude)) * 0.5);
   // earth_radius * sqrt(x^2 + y^2)
   return parseInt(6367449 * Math.sqrt(x*x + y*y));
 }
 
-function equirectBearing(c1,c2) {
-  y = Math.sin(radians(c2.longitude) - radians(c1.longitude)) * Math.cos(radians(c2.latitude));
-  x = Math.cos(radians(c1.latitude)) * Math.sin(radians(c2.latitude)) - 
+function calculateBearing(c1,c2) {
+  var y = Math.sin(radians(c2.longitude) - radians(c1.longitude)) * Math.cos(radians(c2.latitude));
+  var x = Math.cos(radians(c1.latitude)) * Math.sin(radians(c2.latitude)) - 
       Math.sin(radians(c1.latitude)) * Math.cos(radians(c2.latitude)) * Math.cos(radians(c2.longitude) - radians(c1.longitude));
-  theta = Math.atan2(y, x);
-  return ((theta * 0x8000 / Math.PI) + 0x10000) % 0x10000;
+  var theta = Math.atan2(y, x);  // Calculate bearing in radians
+  return ((theta * 0x8000 / Math.PI) + 0x10000) % 0x10000; // Translate radians to Pebble linear scale
 }
+
+function stringInsert(template_string, insertion_object) {
+  return template_string.replace(/%\w+%/g, function(placeholder) {
+    return insertion_object[placeholder] || placeholder;
+  });
+}
+
+function queryAPI(search_query, geo) {
+    return new Promise(function(resolve, reject) {
+      XHR.xhrRequest("GET", stringInsert(NEARBY_API_TEMPLATE, {"%SEARCH%": search_query, "%LONGITUDE%": geo.longitude, "%LATITUDE%": geo.latitude}),
+                      {"Accept": "application/json"}, {}, 3).then(function(json) {
+          if (!('results' in json) || json.results.length == 0) {
+            debug(2, "API results returned empty, aborting update");
+            return;
+          }
+          coords = [];
+          for (var i in json.results) {
+            var item = json.results[i];
+            coords.push({
+              "name": item.name,
+              "address": item.address,
+              "coords": item.coordinates
+            });
+          }
+          return resolve(coords);
+        }, function() {
+            debug(2, "Error retrieving nearby places");
+            return reject();
+        });
+    });
+}
+
+function getPosition(options) {
+  return new Promise(function(resolve, reject) {
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
+}
+
+function parseGeoItems(position, items) {
+  geolocation = position;
+  items.forEach(function(item)  {
+    item.distance = (calculateDistance(geolocation.coords, item.coords));
+    item.bearing = (calculateBearing(geolocation.coords, item.coords));
+  });
+  items.sort(function(a,b) {return (a.distance < b.distance) ? -1 : 1;});
+  debug(2, "Closest Place: \n\t" + coords[0].name + "\n\t" + coords[0].address);
+  return items;
+}
+
+function geoError(err) {
+    debug(2, JSON.stringify(err));
+}
+
 
 // Called when incoming message from the Pebble is received
 Pebble.addEventListener("appmessage", function(e) {
@@ -33,34 +97,33 @@ Pebble.addEventListener("appmessage", function(e) {
   switch(dict.TransferType) {
     case TransferType.READY:
       debug(2, "Sending Ready message");
+      if (coords.length == 0 || Object.keys(geolocation).length === 0) {return;}
       Pebble.sendAppMessage({"TransferType": TransferType.READY}, messageSuccess, messageFailure);
     break;
 
     case TransferType.REFRESH:
       debug(2, "Refresh message received");
+      if (COORDINATE_SPOOFING) {
+        geolocation = {};
+        geolocation.coords = DEBUG_COORDINATES[Math.floor(Math.random() * DEBUG_COORDINATES.length)];
+        debug(2, JSON.stringify(geolocation));
+        coords = parseGeoItems(geolocation, coords);
+        Pebble.sendAppMessage({
+          "TransferType": TransferType.BEARING, 
+          "Bearing": coords[0].bearing, 
+          "Distance": coords[0].distance,
+          "LocationString": coords[0].name}, messageSuccess, messageFailure);
+      }
     break;
 
     case TransferType.BEARING:
+      coords = parseGeoItems(geolocation, coords);
+      Pebble.sendAppMessage({
+        "TransferType": TransferType.BEARING, 
+        "Bearing": coords[0].bearing, 
+        "Distance": coords[0].distance,
+        "LocationString": coords[0].name}, messageSuccess, messageFailure);
       debug(2, "Bearing message received");
-        navigator.geolocation.getCurrentPosition(
-          function success(pos) {
-              coords.forEach(function(item)  {
-                item.distance = (equirectDistance(pos.coords, item.coordinates));
-                item.bearing = (equirectBearing(pos.coords, item.coordinates));
-              });
-              coords.sort(function(a,b) {return (a.distance > b.distance) ? 1 : -1;});
-              var closestItem = coords[0];
-              debug(2, "Closest Item: \n\t" + coords[0].name);
-              Pebble.sendAppMessage({"TransferType": TransferType.BEARING, "Bearing": closestItem.bearing, "Distance": closestItem.distance}, messageSuccess, messageFailure);
-          },
-          function error(err) {
-            debug(2, "geolocation error, (" + err.code + "): " + err.message);
-          },
-          {
-            enableHighAccuracy: false,
-            timeout: 5000,
-            maximumAge: 0
-        });
     break;
   }
 });
@@ -68,8 +131,25 @@ Pebble.addEventListener("appmessage", function(e) {
 
 Pebble.addEventListener('ready', function() {
   console.log("And we're back");
-  Pebble.sendAppMessage({"TransferType": TransferType.READY,}, messageSuccess, messageFailure);
-  
+  // Get Position manually once
+  getPosition(geolocation_options).then(function(position) {
+    geolocation = position;
+    debug(2, JSON.stringify(position));
+    // Retrieve nearby places with query and geolocation
+    queryAPI("Pubs", position.coords).then(function(items) {
+      // Format output of call
+      coords = parseGeoItems(position, items);
+      // Register handler to recalculate and broadcast to pebble on device position change
+      if (!COORDINATE_SPOOFING) {
+        navigator.geolocation.watchPosition(function(position) {
+          geolocation = position;
+          coords = parseGeoItems(geolocation, coords);
+        }, geoError, geolocation_options);
+      }
+      // Now ready to receive requests from pebble
+      Pebble.sendAppMessage({"TransferType": TransferType.READY,}, messageSuccess, messageFailure);
+    }, null);
+  }, geoError);
 });
 
 

@@ -7,6 +7,7 @@
 
 
 extern GFont ubuntu18;
+extern GFont ubuntu14;
 extern VibePattern short_vibe; 
 extern VibePattern long_vibe; 
 extern VibePattern overflow_vibe; 

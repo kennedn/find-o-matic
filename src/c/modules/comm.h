@@ -4,6 +4,8 @@ void comm_init();
 
 void comm_deinit();
 
+void comm_refresh_request();
+
 #ifdef PBL_PLATFORM_APLITE
     #define INBOX_SIZE 256
 #else

@@ -5,34 +5,10 @@ for (var key in globals) {
 }
 
 var self = module.exports = {
-  colorAppMessage: function(color, hash) {
-    Pebble.sendAppMessage({"TransferType": TransferType.COLOR, "Color": color, "Hash": hash}, messageSuccess, messageFailure);
-  },
-
-  localXHRRequest: function(button, url, headers, hash) {
-    var data = {};
-    var highlight_idx = ColorAction.VIBRATE_RESPONSE;
-    if (Array.isArray(button.data)) {
-      if (button.index == null) { 
-        button.index = 0;
-      }
-      data = button.data[button.index];
-      if (button.data.length == 2) { highlight_idx = button.index; }
-      button.index = (button.index + 1) % button.data.length;
-    } else {
-      data = button.data;
-    }
-    debug(2, "highlight idx: " + highlight_idx);
-    self.xhrRequest(button.method, url, headers, data, hash, 2).then(function(xhr_data) {
-      self.colorAppMessage(highlight_idx, xhr_data.hash);
-    }, function(hash) {
-      self.colorAppMessage(ColorAction.ERROR, hash);
-    });
-  },
-  xhrRequest: function(method, url, headers, data, origin_hash, maxRetries) {
+  xhrRequest: function(method, url, headers, data, maxRetries) {
     return new Promise(function(resolve, reject) {
 
-      var xhrRetry = function(method, url, headers, data, origin_hash, maxRetries) {
+      var xhrRetry = function(method, url, headers, data, maxRetries) {
         if (typeof(maxRetries) == 'number'){
           maxRetries = [maxRetries, maxRetries];
         }
@@ -44,23 +20,23 @@ var self = module.exports = {
             var returnData = {};
             try {
               returnData = JSON.parse(this.responseText);
-              debug(2, "Response data: " + JSON.stringify(returnData));
+              debug(3, "Response data: " + JSON.stringify(returnData));
             } catch(e) {
               debug(1, "---- Status: JSON parse failure");
-              return reject(origin_hash);
+              return reject();
             }
 
-            return resolve({ data: returnData, hash: origin_hash});
+            return resolve(returnData);
 
           } else {
             if (maxRetries[1] > 0) {
               debug(1, "---- Status: " + this.status);
               setTimeout(function() { 
-                xhrRetry(method, url, headers, data, origin_hash, [maxRetries[0], maxRetries[1] - 1]); 
+                xhrRetry(method, url, headers, data, [maxRetries[0], maxRetries[1] - 1]); 
               }, 307 * (maxRetries[0] - maxRetries[1]));
             } else {
               debug(1, "---- Status: Max retries reached");
-              return reject(origin_hash);
+              return reject();
             }
           }
         };
@@ -71,7 +47,7 @@ var self = module.exports = {
         debug(1, "-- Data: " + JSON.stringify(data));
 
         request.onerror = request.ontimeout = function(e) { 
-          return reject(origin_hash);
+          return reject();
         };
 
         request.open(method, url);
@@ -84,7 +60,7 @@ var self = module.exports = {
         }
         request.send(JSON.stringify(data)); 
       };
-      xhrRetry(method, url, headers, data, origin_hash, maxRetries);
+      xhrRetry(method, url, headers, data, maxRetries);
     });
   }
 };

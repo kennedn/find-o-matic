@@ -8,17 +8,14 @@
 
 // Vector paths for the compass needles
 static const GPathInfo NEEDLE_NORTH_POINTS = {
-  3,
-  (GPoint[]) { { -8, 0 }, { 8, 0 }, { 0, -36 } }
-};
-static const GPathInfo NEEDLE_SOUTH_POINTS = {
-  3,
-  (GPoint[]) { { 8, 0 }, { 0, 36 }, { -8, 0 } }
+  4,
+  (GPoint[]) { {0, -20 }, { -8, -26 }, { 0, -46 }, { 8, -26 } }
 };
 
 typedef struct {
   int32_t bearing;
   int32_t distance;
+  char name[64];
 } DestinationData;
 
 static DestinationData destination_data = {.bearing = 0, .distance = 0};
@@ -26,33 +23,43 @@ static Window *s_compass_window;
 static BitmapLayer *s_bitmap_layer;
 static GBitmap *s_background_bitmap;
 static Layer *s_path_layer;
-static TextLayer *s_heading_layer, *s_text_layer_calib_state;
-static GPath *s_needle_north, *s_needle_south;
+static TextLayer *s_heading_layer;
+static GPath *s_needle_north;
 
 
+static void compass_heading_handler(CompassHeadingData heading_data);
 
 // //! Selection button callback, creates a new action window based on current row
 // //! @param recognizer The click recognizer that detected a "click" pattern
 // //! @param context Pointer to application specified data
-// static void select_callback(ClickRecognizerRef ref, void *ctx) {
-//   if (tile_array) {
-//     uint8_t selected_row = menu_layer_get_selected_index(s_menu_layer).row;
-//     action_window_push(tile_array->tiles[selected_row], selected_row);
-//   }
-// }
+static void select_callback(ClickRecognizerRef ref, void *ctx) {
+    comm_refresh_request();
+}
 
-// //! Up button callback, Moves up one row in the menu list, wraps around to bottom of list
-// //! @param recognizer The click recognizer that detected a "click" pattern
-// //! @param context Pointer to application specified data
-// static void up_callback(ClickRecognizerRef ref, void *ctx){
-//   if (!tile_array) { return; }
-//   if (menu_layer_get_selected_index(s_menu_layer).row == 0) {
-//     menu_layer_set_selected_index(s_menu_layer,(MenuIndex) {.row = tile_array->used - 1, .section = 0}, MenuRowAlignCenter, true);
-//   } else {
-//     menu_layer_set_selected_next(s_menu_layer, true, MenuRowAlignCenter, true);
-//   }
-// }
+//! Up button callback, Moves up one row in the menu list, wraps around to bottom of list
+//! @param recognizer The click recognizer that detected a "click" pattern
+//! @param context Pointer to application specified data
+static void location_peek_callback(ClickRecognizerRef ref, void *ctx){
+  compass_service_unsubscribe();
+  layer_set_hidden(s_path_layer, true);
+  GRect bounds = layer_get_frame(window_get_root_layer(s_compass_window));
+  text_layer_set_font(s_heading_layer, ubuntu14);
+  static char s_heading_buf[64];
+  snprintf(s_heading_buf,  ARRAY_LENGTH(s_heading_buf), "%s", destination_data.name);
+  debug(2, "name: %s", destination_data.name);
+  bounds.origin.x = 25;
+  bounds.size.w = bounds.size.w - 50;
+  GSize text_size = graphics_text_layout_get_content_size(s_heading_buf, ubuntu14, bounds, GTextOverflowModeWordWrap, GTextAlignmentLeft);
+  GRect text_bounds = GRect(bounds.origin.x + ((bounds.size.w - text_size.w) / 2), bounds.origin.y + ((bounds.size.h - text_size.h) / 2),
+                            text_size.w, text_size.h);
+  layer_set_frame(text_layer_get_layer(s_heading_layer), text_bounds);
+  text_layer_set_text(s_heading_layer, s_heading_buf);
+}
 
+static void location_peek_release_callback(ClickRecognizerRef ref, void *ctx){
+  compass_service_subscribe(compass_heading_handler);
+  layer_set_hidden(s_path_layer, false);
+}
 // //! Down button callback, Moves down one row in the menu list, wraps around to top of list
 // //! @param recognizer The click recognizer that detected a "click" pattern
 // //! @param context Pointer to application specified data
@@ -66,51 +73,37 @@ static GPath *s_needle_north, *s_needle_south;
 // }
 
 
-// static void click_config_handler(void *ctx) {
-//   // scroll_layer_set_click_config_onto_window(menu_layer_get_scroll_layer(s_menu_layer), s_menu_window);
-//   window_single_repeating_click_subscribe(BUTTON_ID_UP, 200, up_callback);
-//   window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 200, down_callback);
-//   window_single_click_subscribe(BUTTON_ID_SELECT, select_callback);
-// }
+static void click_config_handler(void *ctx) {
+  // scroll_layer_set_click_config_onto_window(menu_layer_get_scroll_layer(s_menu_layer), s_menu_window);
+  // window_single_repeating_click_subscribe(BUTTON_ID_UP, 200, up_callback);
+  // window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 200, down_callback);
+  window_long_click_subscribe(BUTTON_ID_UP, 50, location_peek_callback, location_peek_release_callback);
+  window_long_click_subscribe(BUTTON_ID_DOWN, 50, location_peek_callback, location_peek_release_callback);
+  window_single_click_subscribe(BUTTON_ID_SELECT, select_callback);
+}
 
-void update_heading_data(uint16_t bearing, uint32_t distance) {
+void update_heading_data(uint16_t bearing, uint32_t distance, char *name) {
+  if(name) {strncpy(destination_data.name, name, ARRAY_LENGTH(destination_data.name));}
   destination_data.bearing = bearing;
   destination_data.distance = distance;
 }
 
 static void compass_heading_handler(CompassHeadingData heading_data) {
-
+  
   int32_t corrected_heading = heading_data.magnetic_heading + destination_data.bearing;
   // rotate needle accordingly
   gpath_rotate_to(s_needle_north, corrected_heading);
-  gpath_rotate_to(s_needle_south, corrected_heading);
+  
 
+  text_layer_set_font(s_heading_layer, ubuntu18);
   // Modify alert layout depending on calibration state
   GRect bounds = layer_get_frame(window_get_root_layer(s_compass_window));
-  GRect alert_bounds;
-  if(heading_data.compass_status == CompassStatusDataInvalid) {
-    // Tell user to move their arm
-    alert_bounds = GRect(0, 0, bounds.size.w, bounds.size.h);
-    text_layer_set_background_color(s_text_layer_calib_state, GColorBlack);
-    text_layer_set_text_color(s_text_layer_calib_state, GColorWhite);
-    text_layer_set_font(s_text_layer_calib_state, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
-    text_layer_set_text(s_text_layer_calib_state, "Compass is calibrating!\n\nMove your arm to aid calibration.");
-  } else if (heading_data.compass_status == CompassStatusCalibrating) {
-    // Show status at the top
-    alert_bounds = GRect(0, -3, bounds.size.w, bounds.size.h / 7);
-    text_layer_set_background_color(s_text_layer_calib_state, GColorClear);
-    text_layer_set_text_color(s_text_layer_calib_state, GColorBlack);
-    text_layer_set_font(s_text_layer_calib_state, fonts_get_system_font(FONT_KEY_GOTHIC_18));
-    text_layer_set_text(s_text_layer_calib_state, "Tuning...");
-  }
-  text_layer_set_text_alignment(s_text_layer_calib_state, GTextAlignmentCenter);
-  layer_set_frame(text_layer_get_layer(s_text_layer_calib_state), alert_bounds);
-  // display heading in degrees and radians
   static char s_heading_buf[64];
-  snprintf(s_heading_buf, sizeof(s_heading_buf),
-    " dist:\n%dm",
-    (int)destination_data.distance
-  );
+  snprintf(s_heading_buf,  ARRAY_LENGTH(s_heading_buf), "%dm", (int)destination_data.distance);
+  GSize text_size = graphics_text_layout_get_content_size(s_heading_buf, ubuntu18, bounds, GTextOverflowModeWordWrap, GTextAlignmentLeft);
+  GRect text_bounds = GRect(bounds.origin.x + ((bounds.size.w - text_size.w) / 2), bounds.origin.y + ((bounds.size.h - text_size.h) / 2),
+                            text_size.w, text_size.h);
+  layer_set_frame(text_layer_get_layer(s_heading_layer), text_bounds);
   text_layer_set_text(s_heading_layer, s_heading_buf);
 
   // trigger layer for refresh
@@ -121,18 +114,6 @@ static void compass_heading_handler(CompassHeadingData heading_data) {
 static void path_layer_update_callback(Layer *path_layer, GContext *ctx) {
   graphics_context_set_fill_color(ctx, PBL_IF_COLOR_ELSE(GColorRed, GColorWhite));
   gpath_draw_filled(ctx, s_needle_north);
-
-  graphics_context_set_fill_color(ctx, GColorWhite);
-  gpath_draw_outline(ctx, s_needle_south);
-
-  // creating centerpoint
-  GRect bounds = layer_get_frame(path_layer);
-  GPoint path_center = grect_center_point(&bounds);
-  graphics_fill_circle(ctx, path_center, 3);
-
-  // then put a white circle on top
-  graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_fill_circle(ctx, path_center, 2);
 }
 
 
@@ -156,39 +137,44 @@ static void menu_window_load(Window *window) {
   layer_set_update_proc(s_path_layer, path_layer_update_callback);
   layer_add_child(window_layer, s_path_layer);
 
-  // Initialize and define the two paths used to draw the needle to north and to south
   s_needle_north = gpath_create(&NEEDLE_NORTH_POINTS);
-  s_needle_south = gpath_create(&NEEDLE_SOUTH_POINTS);
 
   // Move the needles to the center of the screen.
   GPoint center = GPoint(bounds.size.w / 2, bounds.size.h / 2);
   gpath_move_to(s_needle_north, center);
-  gpath_move_to(s_needle_south, center);
+
 
   // Place text layers onto screen: one for the heading and one for calibration status
-  s_heading_layer = text_layer_create(
-    GRect(PBL_IF_ROUND_ELSE(40, 8), PBL_IF_ROUND_ELSE(40, 8), bounds.size.w / 4, bounds.size.h / 5));
+  
+  GSize text_size = graphics_text_layout_get_content_size("No Data", ubuntu18, bounds, GTextOverflowModeWordWrap, GTextAlignmentLeft);
+  GRect text_bounds = GRect(bounds.origin.x + ((bounds.size.w - text_size.w) / 2), bounds.origin.y + ((bounds.size.h - text_size.h) / 2),
+                            text_size.w, text_size.h);
+  s_heading_layer = text_layer_create(text_bounds);
+  text_layer_set_font(s_heading_layer, ubuntu18);
   text_layer_set_text(s_heading_layer, "No Data");
+  text_layer_set_text_alignment(s_heading_layer, GTextAlignmentLeft);
+  text_layer_set_background_color(s_heading_layer, GColorClear);
+  text_layer_set_text_color(s_heading_layer, GColorWhite);
   layer_add_child(window_layer, text_layer_get_layer(s_heading_layer));
 
-  s_text_layer_calib_state = text_layer_create(GRect(0, 0, bounds.size.w, bounds.size.h / 7));
-  text_layer_set_text_alignment(s_text_layer_calib_state, GTextAlignmentLeft);
-  text_layer_set_background_color(s_text_layer_calib_state, GColorClear);
+  // s_text_layer_calib_state = text_layer_create(GRect(0, 0, bounds.size.w, bounds.size.h / 7));
+  // text_layer_set_text_alignment(s_text_layer_calib_state, GTextAlignmentLeft);
+  // text_layer_set_background_color(s_text_layer_calib_state, GColorClear);
 
-  layer_add_child(window_layer, text_layer_get_layer(s_text_layer_calib_state));
+  // layer_add_child(window_layer, text_layer_get_layer(s_text_layer_calib_state));
 
 #if defined(PBL_ROUND)
-  text_layer_enable_screen_text_flow_and_paging(s_text_layer_calib_state, 5);
+  // text_layer_enable_screen_text_flow_and_paging(s_text_layer_calib_state, 5);
 #endif
+  window_set_click_config_provider(s_compass_window, click_config_handler);
 
 }
 
 static void menu_window_unload(Window *window) {
   if (s_compass_window) {
     text_layer_destroy(s_heading_layer);
-    text_layer_destroy(s_text_layer_calib_state);
+    // text_layer_destroy(s_text_layer_calib_state);
     gpath_destroy(s_needle_north);
-    gpath_destroy(s_needle_south);
     layer_destroy(s_path_layer);
     gbitmap_destroy(s_background_bitmap);
     bitmap_layer_destroy(s_bitmap_layer);
@@ -198,9 +184,8 @@ static void menu_window_unload(Window *window) {
     s_bitmap_layer = NULL;
     s_background_bitmap = NULL;
     s_path_layer = NULL;
-    s_needle_south = NULL;
     s_needle_north = NULL;
-    s_text_layer_calib_state = NULL;
+    // s_text_layer_calib_state = NULL;
     s_heading_layer = NULL;
   }
 }

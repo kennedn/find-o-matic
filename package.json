@@ -58,9 +58,14 @@
           "type": "font"
         },
         {
+          "file": "fonts/Ubuntu-B.ttf",
+          "name": "FONT_UBUNTU_BOLD_14",
+          "type": "font"
+        },
+        {
           "type": "bitmap",
           "name": "COMPASS_BACKGROUND",
-          "file": "images/compass_background.png"
+          "file": "images/compass_background2.png"
         }
       ]
     }
