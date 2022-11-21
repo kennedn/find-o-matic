@@ -1,10 +1,17 @@
 {
   "name": "find-o-matic",
   "author": "kennedn",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "keywords": [
     "pebble-app",
-    "hackathon1"
+    "hackathon1",
+    "find",
+    "matic",
+    "compass",
+    "pub",
+    "north",
+    "navigation",
+    "map"
   ],
   "private": true,
   "dependencies": {
