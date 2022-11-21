@@ -7,7 +7,6 @@ static bool s_clay_needs_config = false;
 static bool s_is_ready = false;
 static int s_outbox_attempts = 0;
 static void comm_bluetooth_event(bool connected);
-static void comm_bearing_request();
 
 //! Handle Javascript inbound communication
 //! @param dict A dictionary iterator containing any sent keys from JS side
@@ -21,6 +20,7 @@ static void inbox(DictionaryIterator *dict, void *context) {
       case TRANSFER_TYPE_BEARING:
         debug(3, "Received bearing");
         s_clay_needs_config = false;
+        compass_window_push();
         debug(2, "Bearing: %d", (int)bearing_t->value->int32);
         debug(2, "Distance: %d", (int)distance_t->value->int32);
         if(location_t) {
@@ -39,24 +39,19 @@ static void inbox(DictionaryIterator *dict, void *context) {
         debug(2, "Pebblekit environment ready");
         s_is_ready = true;
         compass_window_push();
-        comm_bearing_request(); 
         break;
       case TRANSFER_TYPE_NO_CLAY:
         debug(2, "No clay config present");
         if(!s_clay_needs_config) {
           s_clay_needs_config = true;
           window_stack_pop_all(true);
-          loading_window_push("No tiles configured in watch app");
+          loading_window_push("Watch app not configured");
         }
         break;
     }
 }
 
 
-//! AppTimer callback function, sends a READY request to JS side on repeat until
-//! tile_array has been created. This ensures that tile data gets sent when the
-//! initial READY response was missed.
-//! @param data NULL pointer
 void comm_ready_callback(void *data) {
   if (s_clay_needs_config) {
     s_ready_timer = NULL;
@@ -86,19 +81,6 @@ void comm_ready_callback(void *data) {
 
 //! Asks pebblekit to perform a refresh, this will clear down localstorage
 //! @param data NULL pointer
-static void comm_bearing_request() {
-    DictionaryIterator *dict;
-    uint32_t result = app_message_outbox_begin(&dict);
-    debug(3, "Refresh result: %d", (int)result);
-    if (result == APP_MSG_OK) {
-      dict_write_uint8(dict, MESSAGE_KEY_TransferType, TRANSFER_TYPE_BEARING);
-      dict_write_end(dict);
-      app_message_outbox_send();
-    }
-}
-
-//! Asks pebblekit to perform a refresh, this will clear down localstorage
-//! @param data NULL pointer
 void comm_refresh_request(void *data) {
     DictionaryIterator *dict;
     uint32_t result = app_message_outbox_begin(&dict);
@@ -110,9 +92,6 @@ void comm_refresh_request(void *data) {
     }
 }
 
-//! Resets all data and locks, kicks off a callback loop that awaits a pebblekit ready message
-//! @param fast_menu Immediately retrieve tile data from storage without waiting
-//! for pebblekit ready message
 void comm_callback_start() {
   s_is_ready = false;
   s_clay_needs_config = false;

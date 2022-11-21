@@ -33,15 +33,6 @@
       "Distance",
       "LocationString",
       "LocationStringSize",
-      "Hash",
-      "Session",
-      "IconKey",
-      "IconIndex",
-      "TransferComplete",
-      "TransferIndex",
-      "TransferLength",
-      "TransferChunk",
-      "TransferChunkLength",
       "TransferType"
     ],
     "resources": {
@@ -65,7 +56,7 @@
         {
           "type": "bitmap",
           "name": "COMPASS_BACKGROUND",
-          "file": "images/compass_background2.png"
+          "file": "images/compass_background.png"
         }
       ]
     }
