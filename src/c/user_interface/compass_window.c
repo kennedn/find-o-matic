@@ -19,29 +19,52 @@ typedef struct {
   bool hasData;
 } DestinationData;
 
-static DestinationData destination_data = {.bearing = 0, .distance = 0, .hasData = false};
+static DestinationData destination_data = {.bearing = 0, .distance = 0, .name[0] = '\0', .hasData = false};
 static Window *s_compass_window;
 static BitmapLayer *s_bitmap_layer;
 static GBitmap *s_background_bitmap;
 static Layer *s_path_layer;
 static TextLayer *s_heading_layer;
 static GPath *s_needle_north;
-static void compass_heading_handler(CompassHeadingData heading_data);
+static bool s_compass_suppression;
+static void compass_heading_handler(CompassHeadingData heading);
 static void set_text_layer_text(char *buffer, GFont font);
+static void click_config_subscribe_handler(void *ctx);
+static void click_config_unsubscribe_handler(void *ctx);
 
 void update_heading_data(uint16_t bearing, uint32_t distance, char *name) {
   if(name) {strncpy(destination_data.name, name, ARRAY_LENGTH(destination_data.name));}
   destination_data.bearing = bearing;
   destination_data.distance = distance;
-  destination_data.hasData = true;
-  compass_heading_handler((CompassHeadingData){.magnetic_heading = DEG_TO_TRIGANGLE(0)});
+  if (!destination_data.hasData) {
+    LONG_VIBE();
+    destination_data.hasData = true;
+    window_set_click_config_provider(s_compass_window, click_config_subscribe_handler);
+  }
+  // Trigger a manual refresh of the compass display, as it otherwise won't trigger until the watch is moved
+  CompassHeadingData heading;
+  compass_service_peek(&heading);
+  compass_heading_handler(heading);
 }
 
+void unsupress_compass() {
+  s_compass_suppression = false;
+  // Re-initialise click handlers
+  window_set_click_config_provider(s_compass_window, click_config_subscribe_handler);
+  layer_set_hidden(s_path_layer, false);
+}
 
 // //! Selection button callback, creates a new action window based on current row
 // //! @param recognizer The click recognizer that detected a "click" pattern
 // //! @param context Pointer to application specified data
 static void select_callback(ClickRecognizerRef ref, void *ctx) {
+    s_compass_suppression = true;
+    // Disable clicks
+    window_set_click_config_provider(s_compass_window, click_config_unsubscribe_handler);
+    layer_set_hidden(s_path_layer, true);
+    static char s_heading_buf[] = "Refreshing locations";
+    set_text_layer_text(s_heading_buf, ubuntu14);
+    SHORT_VIBE();
     comm_refresh_request();
 }
 
@@ -49,7 +72,9 @@ static void select_callback(ClickRecognizerRef ref, void *ctx) {
 //! @param recognizer The click recognizer that detected a "click" pattern
 //! @param context Pointer to application specified data
 static void location_peek_callback(ClickRecognizerRef ref, void *ctx){
-  compass_service_unsubscribe();
+  s_compass_suppression = true;
+
+  SHORT_VIBE();
   layer_set_hidden(s_path_layer, true);
   static char s_heading_buf[64];
   snprintf(s_heading_buf,  ARRAY_LENGTH(s_heading_buf), "%s", destination_data.name);
@@ -58,17 +83,20 @@ static void location_peek_callback(ClickRecognizerRef ref, void *ctx){
 }
 
 static void location_peek_release_callback(ClickRecognizerRef ref, void *ctx){
-  compass_service_subscribe(compass_heading_handler);
   layer_set_hidden(s_path_layer, false);
+  s_compass_suppression = false;
 }
 
-static void click_config_handler(void *ctx) {
-  // scroll_layer_set_click_config_onto_window(menu_layer_get_scroll_layer(s_menu_layer), s_menu_window);
-  // window_single_repeating_click_subscribe(BUTTON_ID_UP, 200, up_callback);
-  // window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 200, down_callback);
+static void click_config_subscribe_handler(void *ctx) {
   window_long_click_subscribe(BUTTON_ID_UP, 50, location_peek_callback, location_peek_release_callback);
   window_long_click_subscribe(BUTTON_ID_DOWN, 50, location_peek_callback, location_peek_release_callback);
   window_single_click_subscribe(BUTTON_ID_SELECT, select_callback);
+}
+
+static void click_config_unsubscribe_handler(void *ctx) {
+  window_long_click_subscribe(BUTTON_ID_UP, 50, NULL, NULL);
+  window_long_click_subscribe(BUTTON_ID_DOWN, 50, NULL, NULL);
+  window_single_click_subscribe(BUTTON_ID_SELECT, NULL);
 }
 
 static void set_text_layer_text(char *buffer, GFont font) {
@@ -85,15 +113,31 @@ static void set_text_layer_text(char *buffer, GFont font) {
   text_layer_set_text(s_heading_layer, buffer);
 }
 
-static void compass_heading_handler(CompassHeadingData heading_data) {
-  if (!destination_data.hasData) {return;}
-  int32_t corrected_heading = heading_data.magnetic_heading + destination_data.bearing;
-  // rotate needle accordingly
-  gpath_rotate_to(s_needle_north, corrected_heading);
-  
+static void compass_heading_handler(CompassHeadingData heading) {
+  if (s_compass_suppression) {return;}
 
-  // trigger layer for refresh
-  layer_mark_dirty(s_path_layer);
+  static char s_heading_buf[64];
+  if (!destination_data.hasData) {
+    layer_set_hidden(s_path_layer, true);
+    strncpy(s_heading_buf, "Acquiring target", ARRAY_LENGTH(s_heading_buf));
+    set_text_layer_text(s_heading_buf, ubuntu14);
+  } else if (heading.compass_status <= CompassStatusDataInvalid) {
+    layer_set_hidden(s_path_layer, true);
+    debug(2, "Calibration status: %d", heading.compass_status);
+    strncpy(s_heading_buf, "Move wrist to calibrate compass", ARRAY_LENGTH(s_heading_buf));
+    set_text_layer_text(s_heading_buf, ubuntu14);
+  } else {
+    layer_set_hidden(s_path_layer, false);
+    int32_t corrected_heading = heading.magnetic_heading + destination_data.bearing;
+    // rotate needle accordingly
+    gpath_rotate_to(s_needle_north, corrected_heading);
+    
+    snprintf(s_heading_buf,  ARRAY_LENGTH(s_heading_buf), "%dm", (int)destination_data.distance);
+    set_text_layer_text(s_heading_buf, ubuntu18);
+
+    // trigger layer for refresh
+    layer_mark_dirty(s_path_layer);
+  }
 }
 
 
@@ -101,11 +145,6 @@ static void path_layer_update_callback(Layer *path_layer, GContext *ctx) {
   if (!destination_data.hasData) {return;}
   graphics_context_set_fill_color(ctx, PBL_IF_COLOR_ELSE(GColorRed, GColorWhite));
   gpath_draw_filled(ctx, s_needle_north);
-  // Modify alert layout depending on calibration state
-  GRect bounds = layer_get_frame(window_get_root_layer(s_compass_window));
-  static char s_heading_buf[64];
-  snprintf(s_heading_buf,  ARRAY_LENGTH(s_heading_buf), "%dm", (int)destination_data.distance);
-  set_text_layer_text(s_heading_buf, ubuntu18);
 }
 
 
@@ -142,14 +181,11 @@ static void menu_window_load(Window *window) {
   text_layer_set_background_color(s_heading_layer, GColorClear);
   text_layer_set_text_color(s_heading_layer, GColorWhite);
   layer_add_child(window_layer, text_layer_get_layer(s_heading_layer));
-  set_text_layer_text("Acquiring target", ubuntu14);
-
-  window_set_click_config_provider(s_compass_window, click_config_handler);
-
 }
 
 static void menu_window_unload(Window *window) {
   if (s_compass_window) {
+    s_compass_suppression = false;
     text_layer_destroy(s_heading_layer);
     // text_layer_destroy(s_text_layer_calib_state);
     gpath_destroy(s_needle_north);

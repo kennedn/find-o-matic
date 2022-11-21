@@ -52,6 +52,7 @@ var self = module.exports = {
   watchPosition: function (options) {
     if (self.watchID !== null) {
       navigator.geolocation.clearWatch(self.watchID);
+      self.watchID = null;
     } 
     // Register handler to recalculate and broadcast to pebble on device position change
     self.watchID = navigator.geolocation.watchPosition(function(position) {
@@ -96,14 +97,18 @@ var self = module.exports = {
   noClayAppMessage: function (message) {
     Pebble.sendAppMessage({"TransferType": TransferType.NO_CLAY}, messageSuccess, messageFailure);
   },
+  refreshAppMessage: function () {
+    Pebble.sendAppMessage({"TransferType": TransferType.REFRESH}, messageSuccess, messageFailure);
+  },
   init: function () {  // Init geolocation, api response and watchPosition callback, send init bearing to watch
+    if(localStorage.getItem("search_query") === null) {
+      self.noClayAppMessage();
+      return;
+    }
+    Pebble.sendAppMessage({"TransferType": TransferType.READY,}, messageSuccess, messageFailure);
     self.getPosition(GEOLOCATION_OPTIONS).then(function(position) {
       self.geolocation = self.parseGeolocation(position);
       // Retrieve nearby places with query and geolocation
-      if(localStorage.getItem("search_query") === null) {
-        self.noClayAppMessage();
-        return;
-      }
       self.queryAPI(localStorage.getItem("search_query"), self.geolocation.coords).then(function(items) {
         // parse raw JSON to extract fields in required format
         self.coords = self.parseGeoItems(self.geolocation, items);
@@ -132,8 +137,8 @@ var self = module.exports = {
     self.queryAPI(localStorage.getItem("search_query"), self.geolocation.coords).then(function(items) {
       // parse raw JSON to extract fields in required format
       self.coords = self.parseGeoItems(self.geolocation, items);
-
       // Send initial bearing message to watch
+      self.refreshAppMessage();
       self.bearingAppMessage(self.coords[0]);
     }, self.apiError);
   },

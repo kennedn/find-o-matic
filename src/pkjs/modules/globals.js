@@ -1,5 +1,5 @@
 var self = module.exports = {
-  DEBUG: 2,
+  DEBUG: 0,
   GEOLOCATION_OPTIONS: {
     "enableHighAccuracy": true, "timeout": 5000, "maximumAge": 0
   },
@@ -22,6 +22,7 @@ var self = module.exports = {
     "ACK": 2,
     "READY": 3,
     "NO_CLAY": 4,
-    "REFRESH": 5
+    "CLAY": 5,
+    "REFRESH": 6
   }
 };

@@ -29,10 +29,18 @@ static void inbox(DictionaryIterator *dict, void *context) {
 
         update_heading_data(bearing_t->value->int32, distance_t->value->int32, (location_t) ? location_t->value->cstring : NULL);
         break;
+      case TRANSFER_TYPE_REFRESH:
+        debug(2, "Received refresh success");
+        LONG_VIBE();
+        unsupress_compass();
+        break;
       case TRANSFER_TYPE_ERROR:
         debug(2, "Received error");
         break;
-      case TRANSFER_TYPE_ACK:
+      case TRANSFER_TYPE_CLAY:
+        debug(2, "Received clay update prompt");
+        LONG_VIBE();
+        compass_window_push();
         debug(2, "Received acknowledge");
         break;
       case TRANSFER_TYPE_READY:

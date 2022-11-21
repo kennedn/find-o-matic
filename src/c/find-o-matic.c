@@ -9,9 +9,6 @@ VibePattern short_vibe = {
 VibePattern long_vibe = { 
     .durations = (uint32_t []) {40,40,40},
     .num_segments = 3,};
-VibePattern overflow_vibe = { 
-    .durations = (uint32_t []) {40,100,40},
-    .num_segments = 3,};
 
 GFont ubuntu18;
 GFont ubuntu14;

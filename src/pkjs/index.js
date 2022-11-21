@@ -32,10 +32,7 @@ Pebble.addEventListener("appmessage", function(e) {
 
 
 Pebble.addEventListener('ready', function() {
-  // Set default search query if in debug
-  // localStorage.setItem("search_query", "Pubs");
   console.log("And we're back");
-  Pebble.sendAppMessage({"TransferType": TransferType.READY,}, messageSuccess, messageFailure);
   Geo.init();
 });
 
@@ -65,6 +62,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
 
   switch(response.action) {
     case "Search":
+      Pebble.sendAppMessage({"TransferType": TransferType.CLAY}, messageSuccess, messageFailure);
       Geo.findItems(response.payload).then(function(items) {
         var claySettings = {};
         claySettings['SearchInput'] = response.payload;
