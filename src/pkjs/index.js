@@ -68,13 +68,14 @@ Pebble.addEventListener('webviewclosed', function(e) {
   switch(response.action) {
     case "Search":
       Pebble.sendAppMessage({"TransferType": TransferType.CLAY}, messageSuccess, messageFailure);
-      localStorage.setItem('search_query', response.payload);
+      localStorage.setItem('search_query', encodeURIComponent(response.payload));
+      debug(2, "Search term: " + encodeURIComponent(response.payload));
 
       var claySettings = {};
       claySettings['SearchInput'] = response.payload;
       localStorage.setItem('clay-settings', JSON.stringify(claySettings));
-      
-      Geo.init(response.payload).then(function(items) {
+
+      Geo.init(encodeURIComponent(response.payload)).then(function(items) {
         claySettings['ClayJSON'] = JSON.stringify(items[0]);
         localStorage.setItem('clay-settings', JSON.stringify(claySettings));
       }, null);

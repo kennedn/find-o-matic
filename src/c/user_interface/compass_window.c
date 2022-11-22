@@ -126,11 +126,11 @@ static void compass_heading_handler(CompassHeadingData heading) {
     layer_set_hidden(s_path_layer, true);
     strncpy(s_heading_buf, "Acquiring target", ARRAY_LENGTH(s_heading_buf));
     set_text_layer_text(s_heading_buf, ubuntu14);
-  // } else if (heading.compass_status <= CompassStatusDataInvalid) {
-  //   layer_set_hidden(s_path_layer, true);
-  //   debug(2, "Calibration status: %d", heading.compass_status);
-  //   strncpy(s_heading_buf, "Move wrist to calibrate compass", ARRAY_LENGTH(s_heading_buf));
-  //   set_text_layer_text(s_heading_buf, ubuntu14);
+  } else if (heading.compass_status <= CompassStatusDataInvalid) {
+    layer_set_hidden(s_path_layer, true);
+    debug(2, "Calibration status: %d", heading.compass_status);
+    strncpy(s_heading_buf, "Move wrist to calibrate compass", ARRAY_LENGTH(s_heading_buf));
+    set_text_layer_text(s_heading_buf, ubuntu14);
   } else {
     layer_set_hidden(s_path_layer, false);
     int32_t corrected_heading = heading.magnetic_heading + destination_data.bearing;
