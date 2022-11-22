@@ -33,7 +33,12 @@ Pebble.addEventListener("appmessage", function(e) {
 
 Pebble.addEventListener('ready', function() {
   console.log("And we're back");
-  Geo.init();
+
+  appMessage({"TransferType": TransferType.READY});
+
+  Geo.init(null).then(function() {
+    debug(2, "Initialised");
+  }, null);
 });
 
 
@@ -41,7 +46,7 @@ Pebble.addEventListener('showConfiguration', function(e) {
   var claySettings = localStorage.getItem("clay-settings");
   try {
     claySettings = JSON.parse(claySettings);
-  } catch(e) {}
+  } catch(err) {}
 
   if(Geo.coords.length > 0 && claySettings) {
     claySettings['ClayJSON'] = JSON.stringify(Geo.coords[0]);
@@ -63,17 +68,16 @@ Pebble.addEventListener('webviewclosed', function(e) {
   switch(response.action) {
     case "Search":
       Pebble.sendAppMessage({"TransferType": TransferType.CLAY}, messageSuccess, messageFailure);
-      Geo.findItems(response.payload).then(function(items) {
-        var claySettings = {};
-        claySettings['SearchInput'] = response.payload;
+      localStorage.setItem('search_query', response.payload);
+
+      var claySettings = {};
+      claySettings['SearchInput'] = response.payload;
+      localStorage.setItem('clay-settings', JSON.stringify(claySettings));
+      
+      Geo.init(response.payload).then(function(items) {
         claySettings['ClayJSON'] = JSON.stringify(items[0]);
         localStorage.setItem('clay-settings', JSON.stringify(claySettings));
-        localStorage.setItem('search_query', response.payload);
-        Geo.watchPosition();
-        Geo.bearingAppMessage(items[0]);
-      }, function(err) {
-        debug(2, "findItems error");
-      });
+      }, null);
       break;
   }
 });

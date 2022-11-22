@@ -1,7 +1,7 @@
 #pragma once
 #include <pebble.h>
 
-#define DEBUG 0
+#define DEBUG 2
 #define debug(level, ...) \
   do { if (level <= DEBUG) APP_LOG(APP_LOG_LEVEL_DEBUG, __VA_ARGS__); } while (0)
 
@@ -16,7 +16,6 @@ bool text_color_legible_over_bg(const GColor8 *bg_color, GColor8 *text_color);
 #define LONG_LOAD_TIMEOUT 6500
 #define SHORT_VIBE() if(!quiet_time_is_active()) { vibes_enqueue_custom_pattern(short_vibe); }
 #define LONG_VIBE() if(!quiet_time_is_active()) { vibes_enqueue_custom_pattern(long_vibe); }
-#define OVERFLOW_VIBE() if(!quiet_time_is_active()) { vibes_enqueue_custom_pattern(overflow_vibe); }
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
 

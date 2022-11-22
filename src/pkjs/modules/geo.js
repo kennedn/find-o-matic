@@ -9,18 +9,18 @@ for (var key in globals) {
 var self = module.exports = {
   coords: [],
   geolocation: {},
-  watchID: null,
+  geoWatchID: null,
+  timerID: null,
+  geoCheckID: null,
   stringInsert: function (template_string, insertion_object) {
     return template_string.replace(/%\w+%/g, function(placeholder) {
       return insertion_object[placeholder] || placeholder;
     });
   },
-  queryAPI: function (search_query, geo) {
+  queryAPI: function (search_query, geo, maxRetries) {
     return new Promise(function(resolve, reject) {
-      debug(2, localStorage.getItem("search_query"));
-      debug(2, search_query);
       XHR.xhrRequest("GET", self.stringInsert(NEARBY_API_TEMPLATE, {"%SEARCH%": search_query, "%LONGITUDE%": geo.deg_longitude, "%LATITUDE%": geo.deg_latitude}),
-        {"Accept": "application/json"}, {}, 3).then(function(json) {
+        {"Accept": "application/json"}, {}, maxRetries).then(function(json) {
         if (!('results' in json) || json.results.length == 0) {
           debug(2, "API results returned empty, aborting update");
           return reject();
@@ -44,22 +44,61 @@ var self = module.exports = {
        });
     });
   },
-  getPosition: function (options) {
+  getPosition: function (options, maxRetries) {
     return new Promise(function(resolve, reject) {
-      navigator.geolocation.getCurrentPosition(resolve, reject, options);
+      var _getPosition = function(options, maxRetries) {
+        if (typeof(maxRetries) == 'number') {
+          maxRetries = [maxRetries, maxRetries];
+        }
+
+        var retry = function(err, maxRetries) {
+          if (maxRetries[1] > 0) {
+            debug(2, "Retrying geolocation request, " + maxRetries[1] + " attempts remaining");
+            _getPosition(options, [maxRetries[0], maxRetries[1] - 1]); 
+          } else {
+            debug(2, "Max retries reached for geolocation");
+            reject(err);
+          }
+        };
+
+        navigator.geolocation.getCurrentPosition(resolve, function(err) {retry(err, maxRetries);}, options);
+      };
+      _getPosition(options, maxRetries);
     });
   },
   watchPosition: function (options) {
-    if (self.watchID !== null) {
-      navigator.geolocation.clearWatch(self.watchID);
-      self.watchID = null;
+    if (self.geoWatchID !== null) {
+      navigator.geolocation.clearWatch(self.geoWatchID);
+      self.geoWatchID = null;
     } 
-    // Register handler to recalculate and broadcast to pebble on device position change
-    self.watchID = navigator.geolocation.watchPosition(function(position) {
+    if (self.timerID !== null) {
+      clearInterval(self.timerID);
+      self.timerID = null;
+    }
+    if (self.geoCheckID !== null) {
+      clearInterval(self.geoCheckID);
+      self.geoCheckID = null;
+    }
+    // Register handler to recalculate coords on position update
+    self.geoWatchID = navigator.geolocation.watchPosition(function(position) {
+      self.geoErrorCount = 0;
       self.geolocation = self.parseGeolocation(position);
       self.coords = self.parseGeoItems(self.geolocation, self.coords);
-      self.bearingAppMessage(self.coords[0]);
-    }, self.geoError, GEOLOCATION_OPTIONS);
+    }, null, GEOLOCATION_OPTIONS);
+
+    // Send bearing message to watch at 1 second intervals
+    self.timerID = setInterval(function() {
+      self.bearingAppMessage(false);
+    }, 1000);
+
+    var geoCheck = function() {
+      self.getPosition(GEOLOCATION_OPTIONS, GEOLOCATION_MAXRETRY).then(function() {
+        self.geoCheckID = setTimeout(function() {geoCheck();}, 5000);
+      }, function(err) {
+        self.geoError(err);
+      });
+    };
+    geoCheck();
   },
   parseGeolocation: function (position) {
     geolocation = {};
@@ -81,66 +120,63 @@ var self = module.exports = {
     return items;
   },
   geoError: function (err) {
-    debug(2, "Geo Error: " + JSON.stringify(err));
+    if (self.geoWatchID !== null) {
+      navigator.geolocation.clearWatch(self.geoWatchID);
+      self.geoWatchID = null;
+    } 
+    if (self.timerID !== null) {
+      clearInterval(self.timerID);
+      self.timerID = null;
+    }
+    if (self.geoCheckID !== null) {
+      clearInterval(self.geoCheckID);
+      self.geoCheckID = null;
+    }
+    debug(2, err.message);
+    appMessage({"TransferType": TransferType.ERROR, "String": "Geolocation error"}); 
   },
-  apiError: function (err) {
-    debug(2, "API Error: " + JSON.stringify(err));
+  apiError: function () {
+    var message = "Unable to reach nearest places API";
+    debug(2, message);
+    appMessage({"TransferType": TransferType.ERROR, "String": message}); 
   },
-  bearingAppMessage: function (coord) {
-    Pebble.sendAppMessage({
+  bearingAppMessage: function (init) {
+    var coord = self.coords[0];
+    appMessage({
       "TransferType": TransferType.BEARING, 
       "Bearing": coord.bearing, 
       "Distance": coord.distance,
-      "LocationString": coord.name},
-    messageSuccess, messageFailure);
+      "String": coord.name,
+      "Init": (init) ? 1 : 0
+    });
   },
-  noClayAppMessage: function (message) {
-    Pebble.sendAppMessage({"TransferType": TransferType.NO_CLAY}, messageSuccess, messageFailure);
-  },
-  refreshAppMessage: function () {
-    Pebble.sendAppMessage({"TransferType": TransferType.REFRESH}, messageSuccess, messageFailure);
-  },
-  init: function () {  // Init geolocation, api response and watchPosition callback, send init bearing to watch
-    if(localStorage.getItem("search_query") === null) {
-      self.noClayAppMessage();
-      return;
-    }
-    Pebble.sendAppMessage({"TransferType": TransferType.READY,}, messageSuccess, messageFailure);
-    self.getPosition(GEOLOCATION_OPTIONS).then(function(position) {
-      self.geolocation = self.parseGeolocation(position);
-      // Retrieve nearby places with query and geolocation
-      self.queryAPI(localStorage.getItem("search_query"), self.geolocation.coords).then(function(items) {
-        // parse raw JSON to extract fields in required format
-        self.coords = self.parseGeoItems(self.geolocation, items);
-
-        self.watchPosition();
-
-        // Send initial bearing message to watch
-        self.bearingAppMessage(self.coords[0]);
-      }, self.apiError);
-    }, self.geoError);
-  },
-  findItems: function (search_query) {  
+  init: function (search_query) { 
     return new Promise(function(resolve, reject) {
-      self.getPosition(GEOLOCATION_OPTIONS).then(function(position) {
+      search_query = search_query || localStorage.getItem("search_query");
+      if(!search_query) {
+        appMessage({"TransferType": TransferType.NO_CLAY});
+        return;
+      }
+      self.getPosition(GEOLOCATION_OPTIONS, GEOLOCATION_MAXRETRY).then(function(position) {
         self.geolocation = self.parseGeolocation(position);
         // Retrieve nearby places with query and geolocation
-        self.queryAPI(search_query, self.geolocation.coords).then(function(items) {
+        self.queryAPI(search_query, self.geolocation.coords, XHR_MAXRETRY).then(function(items) {
           // parse raw JSON to extract fields in required format
           self.coords = self.parseGeoItems(self.geolocation, items);
+          self.bearingAppMessage(true);
+          self.watchPosition();
           resolve(self.coords);
-        }, reject);
-      }, reject);
+        }, self.apiError);
+      }, self.geoError);
     });
   },
   refresh: function () {  // Refresh results from API
-    self.queryAPI(localStorage.getItem("search_query"), self.geolocation.coords).then(function(items) {
+    self.queryAPI(localStorage.getItem("search_query"), self.geolocation.coords, XHR_MAXRETRY).then(function(items) {
       // parse raw JSON to extract fields in required format
       self.coords = self.parseGeoItems(self.geolocation, items);
       // Send initial bearing message to watch
-      self.refreshAppMessage();
-      self.bearingAppMessage(self.coords[0]);
+      appMessage({"TransferType": TransferType.REFRESH});
+      self.bearingAppMessage(true);
     }, self.apiError);
   },
-
 };

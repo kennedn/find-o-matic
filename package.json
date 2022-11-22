@@ -1,7 +1,7 @@
 {
   "name": "find-o-matic",
   "author": "kennedn",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "keywords": [
     "pebble-app",
     "hackathon1",
@@ -38,8 +38,8 @@
     "messageKeys": [
       "Bearing",
       "Distance",
-      "LocationString",
-      "LocationStringSize",
+      "String",
+      "Init",
       "TransferType"
     ],
     "resources": {

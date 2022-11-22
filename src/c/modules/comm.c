@@ -15,32 +15,35 @@ static void inbox(DictionaryIterator *dict, void *context) {
     Tuple *type_t = dict_find(dict, MESSAGE_KEY_TransferType);
     Tuple *bearing_t = dict_find(dict, MESSAGE_KEY_Bearing);
     Tuple *distance_t = dict_find(dict, MESSAGE_KEY_Distance);
-    Tuple *location_t = dict_find(dict, MESSAGE_KEY_LocationString);
+    Tuple *init_t = dict_find(dict, MESSAGE_KEY_Init);
+    Tuple *string_t = dict_find(dict, MESSAGE_KEY_String);
     switch(type_t->value->int32) {
       case TRANSFER_TYPE_BEARING:
         debug(3, "Received bearing");
         s_clay_needs_config = false;
-        compass_window_push();
         debug(2, "Bearing: %d", (int)bearing_t->value->int32);
         debug(2, "Distance: %d", (int)distance_t->value->int32);
-        if(location_t) {
-          debug(2, "Name: %s", location_t->value->cstring);
-        }
+        debug(2, "bool: %d", (int)init_t->value->uint32);
+        debug(2, "Name: %s", string_t->value->cstring);
 
-        update_heading_data(bearing_t->value->int32, distance_t->value->int32, (location_t) ? location_t->value->cstring : NULL);
+        update_heading_data(bearing_t->value->int32, distance_t->value->int32, string_t->value->cstring, (bool)init_t->value->uint32);
         break;
       case TRANSFER_TYPE_REFRESH:
         debug(2, "Received refresh success");
         LONG_VIBE();
-        unsupress_compass();
+        unsuppress_compass();
         break;
       case TRANSFER_TYPE_ERROR:
-        debug(2, "Received error");
+        LONG_VIBE();
+        window_stack_pop_all(true);
+        loading_window_push(string_t->value->cstring);
+        debug(2, "%s", string_t->value->cstring);
         break;
       case TRANSFER_TYPE_CLAY:
         debug(2, "Received clay update prompt");
         LONG_VIBE();
         compass_window_push();
+        unsuppress_compass();
         debug(2, "Received acknowledge");
         break;
       case TRANSFER_TYPE_READY:
@@ -50,11 +53,9 @@ static void inbox(DictionaryIterator *dict, void *context) {
         break;
       case TRANSFER_TYPE_NO_CLAY:
         debug(2, "No clay config present");
-        if(!s_clay_needs_config) {
-          s_clay_needs_config = true;
-          window_stack_pop_all(true);
-          loading_window_push("Watch app not configured");
-        }
+        s_clay_needs_config = true;
+        window_stack_pop_all(true);
+        loading_window_push("Watch app not configured");
         break;
     }
 }

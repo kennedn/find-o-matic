@@ -1,9 +1,11 @@
 var self = module.exports = {
-  DEBUG: 0,
+  DEBUG: 2,
   GEOLOCATION_OPTIONS: {
     "enableHighAccuracy": true, "timeout": 5000, "maximumAge": 0
   },
   NEARBY_API_TEMPLATE: "https://duckduckgo.com/local.js?q=%SEARCH%&tg=maps_places&latitude=%LATITUDE%&longitude=%LONGITUDE%&location_type=obfuscated",
+  GEOLOCATION_MAXRETRY: 3,
+  XHR_MAXRETRY: 3,
   debug: function(level, msg) {
     if (level <= self.DEBUG) {
       console.log(msg);
@@ -14,6 +16,9 @@ var self = module.exports = {
   },
   messageFailure: function() {
     self.debug(3,"Message send failed.");
+  },
+  appMessage: function(payload) {
+    Pebble.sendAppMessage(payload, messageSuccess, messageFailure);
   },
 
   TransferType: {
