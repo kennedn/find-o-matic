@@ -26,7 +26,7 @@ module.exports =
           "autocapitalize": "off",
           "autocorrect": "off",
           "autocomplete": "off",
-          "type": "url",
+          "type": "search",
           "spellcheck": false,
           "required": true
         }
