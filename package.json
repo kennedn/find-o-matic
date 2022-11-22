@@ -38,8 +38,8 @@
     "messageKeys": [
       "Bearing",
       "Distance",
-      "LocationString",
-      "LocationStringSize",
+      "String",
+      "Init",
       "TransferType"
     ],
     "resources": {

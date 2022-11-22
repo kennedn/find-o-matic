@@ -23,11 +23,11 @@ module.exports =
         "id": "SearchInput",
         "label": "<font style='color:#ff4700;'>* </font>Search terms",
         "attributes": {
-          "autocapitalize": "off",
-          "autocorrect": "off",
-          "autocomplete": "off",
+          "autocapitalize": "on",
+          "autocorrect": "on",
+          "autocomplete": "on",
           "type": "url",
-          "spellcheck": false,
+          "spellcheck": true,
           "required": true
         }
       },

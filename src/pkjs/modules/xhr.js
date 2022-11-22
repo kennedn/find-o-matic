@@ -32,6 +32,7 @@ var self = module.exports = {
             if (maxRetries[1] > 0) {
               debug(1, "---- Status: " + this.status);
               setTimeout(function() { 
+                debug(2, "Retrying XHR request, " + maxRetries[1] + " attempts remaining");
                 xhrRetry(method, url, headers, data, [maxRetries[0], maxRetries[1] - 1]); 
               }, 307 * (maxRetries[0] - maxRetries[1]));
             } else {
