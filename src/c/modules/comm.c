@@ -19,12 +19,12 @@ static void inbox(DictionaryIterator *dict, void *context) {
     Tuple *string_t = dict_find(dict, MESSAGE_KEY_String);
     switch(type_t->value->int32) {
       case TRANSFER_TYPE_BEARING:
-        debug(3, "Received bearing");
+        debug(2, "Received bearing");
         s_clay_needs_config = false;
-        debug(2, "Bearing: %d", (int)bearing_t->value->int32);
-        debug(2, "Distance: %d", (int)distance_t->value->int32);
-        debug(2, "bool: %d", (int)init_t->value->uint32);
-        debug(2, "Name: %s", string_t->value->cstring);
+        debug(3, "Bearing: %d", (int)bearing_t->value->int32);
+        debug(3, "Distance: %d", (int)distance_t->value->int32);
+        debug(3, "bool: %d", (int)init_t->value->uint32);
+        debug(3, "Name: %s", string_t->value->cstring);
 
         update_heading_data(bearing_t->value->int32, distance_t->value->int32, string_t->value->cstring, (bool)init_t->value->uint32);
         break;
@@ -42,6 +42,7 @@ static void inbox(DictionaryIterator *dict, void *context) {
       case TRANSFER_TYPE_CLAY:
         debug(2, "Received clay update prompt");
         LONG_VIBE();
+        window_stack_pop_all(true);
         compass_window_push();
         unsuppress_compass();
         debug(2, "Received acknowledge");

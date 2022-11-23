@@ -85,7 +85,7 @@ static void window_load(Window *window) {
   s_text_timer = NULL;
   s_timeout_timer = NULL;
   s_text_counter = 0;
-  text_color_legible_over_bg(&s_bg_color, &s_text_color);
+  s_text_color = GColorWhite;
   if (s_custom_text) {
     setup_text_layer(s_custom_text, s_window_layer, s_window_bounds, false, false);
     return;

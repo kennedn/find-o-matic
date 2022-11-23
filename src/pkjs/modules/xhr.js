@@ -48,6 +48,7 @@ var self = module.exports = {
         debug(1, "-- Data: " + JSON.stringify(data));
 
         request.onerror = request.ontimeout = function(e) { 
+          debug(1, "---- Status: Error or timeout encountered");
           return reject();
         };
 

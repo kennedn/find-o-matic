@@ -3,6 +3,9 @@
 #include "c/modules/comm.h"
 #include "c/find-o-matic.h"
 
+VibePattern tiny_vibe = { 
+    .durations = (uint32_t []) {30, 200},
+    .num_segments = 2,};
 VibePattern short_vibe = { 
     .durations = (uint32_t []) {50},
     .num_segments = 1,};
@@ -12,30 +15,6 @@ VibePattern long_vibe = {
 
 GFont ubuntu18;
 GFont ubuntu14;
-
-//! Returns a color that is legible over the provided bg_color
-//! @param bg_color color to test for legibility
-//! @param text_color A legable color, either white or a darkened derivative of bg_color
-//! @return Boolean representing whether luminance threshold was exceeded
-bool text_color_legible_over_bg(const GColor8 *bg_color, GColor8 *text_color) {
-  // constants taken from https://www.w3.org/TR/AERT/#color-contrast
-  uint16_t luminance = (uint16_t)((0.299 * bg_color->r + 0.587 * bg_color->g + 0.114 * bg_color->b) * 100);
-  bool exceeds_threshold = (luminance >= 200);
-  if(!text_color) {
-    return exceeds_threshold;
-  }
-  #ifdef PBL_COLOR
-  GColor8 derivative = (GColor8) {.a = 3,
-                                  .r = MAX(0, bg_color->r - 2),
-                                  .g = MAX(0, bg_color->g - 2),
-                                  .b = MAX(0, bg_color->b - 2)};
-  *text_color = (exceeds_threshold) ? derivative : GColorWhite;
-  #else
-  *text_color = (exceeds_threshold) ? GColorBlack : GColorWhite;
-  #endif
-  return exceeds_threshold;
-}
-
 
 static void init() {
   ubuntu18 = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_UBUNTU_BOLD_18));

@@ -19,11 +19,19 @@ var self = module.exports = {
   },
   queryAPI: function (search_query, geo, maxRetries) {
     return new Promise(function(resolve, reject) {
+      // Clear previous Clay state by removing ClayJSON key 
+      var claySettings = localStorage.getItem("clay-settings");
+      try {
+        claySettings = JSON.parse(claySettings);
+      } catch(err) {}
+      delete claySettings['ClayJSON'];
+      localStorage.setItem("clay-settings", JSON.stringify(claySettings));
+
       XHR.xhrRequest("GET", self.stringInsert(NEARBY_API_TEMPLATE, {"%SEARCH%": search_query, "%LONGITUDE%": geo.deg_longitude, "%LATITUDE%": geo.deg_latitude}),
         {"Accept": "application/json"}, {}, maxRetries).then(function(json) {
         if (!('results' in json) || json.results.length == 0) {
           debug(2, "API results returned empty, aborting update");
-          return reject();
+          return reject("API found no results\n\nTry searching for something else");
         }
         coords = [];
         for (var i in json.results) {
@@ -39,8 +47,8 @@ var self = module.exports = {
         }
         return resolve(coords);
         }, function() {
-          debug(2, "Error retrieving nearby places");
-          return reject();
+          debug(2, "Unable to reach nearest places API");
+          return reject("Unable to reach nearest places API");
        });
     });
   },
@@ -86,17 +94,16 @@ var self = module.exports = {
       self.coords = self.parseGeoItems(self.geolocation, self.coords);
     }, null, GEOLOCATION_OPTIONS);
 
-    // Send bearing message to watch at 1 second intervals
+    // Send bearing message to watch at 3 second intervals
     self.timerID = setInterval(function() {
       self.bearingAppMessage(false);
     }, 1000);
 
+    // WatchPosition does not error on signal loss, so check that geo-coordinates are still obtainable on a 8 second timer
     var geoCheck = function() {
       self.getPosition(GEOLOCATION_OPTIONS, GEOLOCATION_MAXRETRY).then(function() {
         self.geoCheckID = setTimeout(function() {geoCheck();}, 5000);
-      }, function(err) {
-        self.geoError(err);
-      });
+      }, self.geoError);
     };
     geoCheck();
   },
@@ -116,7 +123,6 @@ var self = module.exports = {
       item.bearing = (MathHelper.calculateBearing(position.coords, item.coords));
     });
     items.sort(function(a,b) {return (a.distance < b.distance) ? -1 : 1;});
-    debug(2, "Closest Place: \n\t" + items[0].name + "\n\t" + items[0].address);
     return items;
   },
   geoError: function (err) {
@@ -133,21 +139,21 @@ var self = module.exports = {
       self.geoCheckID = null;
     }
     debug(2, err.message);
-    appMessage({"TransferType": TransferType.ERROR, "String": "Geolocation error"}); 
+    appMessage({"TransferType": TransferType.ERROR, "String": "Geolocation error, check phone settings"}); 
   },
-  apiError: function () {
-    var message = "Unable to reach nearest places API";
-    debug(2, message);
-    appMessage({"TransferType": TransferType.ERROR, "String": message}); 
+  apiError: function (err) {
+    debug(2, err);
+    appMessage({"TransferType": TransferType.ERROR, "String": err}); 
   },
   bearingAppMessage: function (init) {
     var coord = self.coords[0];
+    if (init) {debug(2, "Closest Place: \n\t" + coord.name + "\n\t" + coord.address);}
     appMessage({
       "TransferType": TransferType.BEARING, 
       "Bearing": coord.bearing, 
       "Distance": coord.distance,
       "String": coord.name,
-      "Init": (init) ? 1 : 0
+      "Init": (init) ? 1 : 0  // JS bools are weird
     });
   },
   init: function (search_query) { 

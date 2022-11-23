@@ -13,6 +13,30 @@ module.exports = function(minified) {
     location.href = window.returnTo || "pebblejs://close#";
   }
 
+  // Automatic form validation does not work on older iOS versions, implement a compatibility function that prevents form submission and 
+  // displays some user prompts about what needs corrected
+  var validPoly = false;
+  if (!HTMLInputElement.prototype.reportValidity) {validPoly = true;}
+  var validityFunc = function () {
+    var self = this;
+      if ((HTMLInputElement.prototype.reportValidity) ? this.reportValidity() : this.checkValidity()) {
+          $(self).set('$background-color', 'rgba(0,170,0,0.2)');
+          $(self).on('input', function() {self.placeholder = ""; $(self).set('$background-color', '#333333');});
+          setTimeout(function() {$(self).set('$background-color', '#333333');}, 2500);
+          return true;
+      } else {
+          self.click();
+          self.focus();
+          self.placeholder = "Please fill in this field...";
+          $(self).on('input', function() {self.placeholder = ""; $(self).set('$background-color', '#333333');});
+          $(self).set('$background-color', 'rgba(255,0,85,0.2)');
+          setTimeout(function() {$(self).set('$background-color', '#333333');}, 2500);
+          return false;
+      }
+  };
+  HTMLInputElement.prototype.compatReportValidity = validityFunc;
+  HTMLTextAreaElement.prototype.compatReportValidity = validityFunc;
+
   
 clayConfig.on(clayConfig.EVENTS.AFTER_BUILD, function() {
 
@@ -36,8 +60,10 @@ clayConfig.on(clayConfig.EVENTS.AFTER_BUILD, function() {
   }
   if (item) {
     searchText.set("<font style='color:#ff4700;'>Closest location:</font></br>" + item.name + "</br>" + item.address + "</br><font style='color:#ff4700;'>" + item.distance + " meters away</font>");
-  } else {
+  } else if(!item && searchInput.get() === ""){
     searchText.hide();
+  } else {
+    searchText.set("<font style='color:#ff4700;'>No results</font>");
   }
 
   clayJSON.hide();
@@ -45,6 +71,7 @@ clayConfig.on(clayConfig.EVENTS.AFTER_BUILD, function() {
 
   // Submission buttons logic
   searchButton.on('click', function () {
+    if (!searchInput.$manipulatorTarget[0].compatReportValidity()) {return;}
     submitWithData({"action": "Search", "payload": searchInput.get()});
   });
 
