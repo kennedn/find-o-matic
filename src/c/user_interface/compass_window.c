@@ -3,11 +3,19 @@
 #include "c/find-o-matic.h"
 #include "c/user_interface/loading_window.h"
 
-// Vector paths for the compass needles
-static const GPathInfo NEEDLE_NORTH_POINTS = {
-  4,
-  (GPoint[]) { {0, -20 }, { -8, -26 }, { 0, -46 }, { 8, -26 } }
-};
+// // Vector paths for the compass needles
+// static const GPathInfo NEEDLE_NORTH_POINTS = {
+//   4,
+//   (GPoint[]) { {0, -20 }, { -8, -26 }, { 0, -46 }, { 8, -26 } }
+// };
+
+typedef struct {
+  GPoint point;
+  GPoint origin;
+  int32_t rotation;
+} GPointWithRotation;
+
+static GPointWithRotation s_point;
 
 typedef struct {
   bool hasData;
@@ -22,7 +30,7 @@ static BitmapLayer *s_bitmap_layer;
 static GBitmap *s_background_bitmap;
 static Layer *s_path_layer;
 static TextLayer *s_heading_layer;
-static GPath *s_needle_north;
+// static GPath *s_needle_north;
 static bool s_compass_suppression;
 static bool s_override_invalid_data;
 static AppTimer *s_invalid_data_timer;
@@ -138,12 +146,14 @@ static void compass_heading_handler(CompassHeadingData heading) {
     debug(2, "Calibration status: %d", heading.compass_status);
     strncpy(s_heading_buf, "Move wrist to calibrate compass", ARRAY_LENGTH(s_heading_buf));
     set_text_layer_text(s_heading_buf, ubuntu14);
-    if(!s_invalid_data_timer) {s_invalid_data_timer = app_timer_register(5000, set_override_invalid_data, NULL);}
+    if(!s_invalid_data_timer) {s_invalid_data_timer = app_timer_register(0, set_override_invalid_data, NULL);}
   } else {
     layer_set_hidden(s_path_layer, false);
     int32_t corrected_heading = heading.magnetic_heading + s_destination_data.bearing;
     // rotate needle accordingly
-    gpath_rotate_to(s_needle_north, corrected_heading);
+    // gpath_rotate_to(s_needle_north, corrected_heading);
+    // s_point.rotation = corrected_heading;
+    s_point.rotation = heading.magnetic_heading;
     
     snprintf(s_heading_buf,  ARRAY_LENGTH(s_heading_buf), "%dm", (int)s_destination_data.distance);
     set_text_layer_text(s_heading_buf, ubuntu18);
@@ -156,8 +166,34 @@ static void compass_heading_handler(CompassHeadingData heading) {
 
 static void path_layer_update_callback(Layer *path_layer, GContext *ctx) {
   if (!s_destination_data.hasData) {return;}
-  graphics_context_set_fill_color(ctx, PBL_IF_COLOR_ELSE(GColorRed, GColorWhite));
-  gpath_draw_filled(ctx, s_needle_north);
+  graphics_context_set_stroke_width(ctx,3);
+  for (uint16_t i=0; i < 24; i++) {
+    if (i == 0) {
+      graphics_context_set_fill_color(ctx, PBL_IF_COLOR_ELSE(GColorRed, GColorWhite));
+      graphics_context_set_stroke_color(ctx, PBL_IF_COLOR_ELSE(GColorRed, GColorWhite));
+    } else {
+      graphics_context_set_fill_color(ctx, GColorWhite);
+      graphics_context_set_stroke_color(ctx, GColorWhite);
+    }
+    int32_t theta = (s_point.rotation + (0xaaa * i)) % TRIG_MAX_ANGLE;
+    GPoint rotated_point;
+    rotated_point.x = ((cos_lookup(theta) * (s_point.point.x) - 
+                      sin_lookup(theta) * (s_point.point.y)) / TRIG_MAX_RATIO);
+    rotated_point.y = ((sin_lookup(theta) * (s_point.point.x) + 
+                      cos_lookup(theta) * (s_point.point.y)) / TRIG_MAX_RATIO);
+    
+    if(i % 6 == 0) {
+      graphics_fill_circle(ctx, (GPoint){.x = rotated_point.x + s_point.origin.x, .y = rotated_point.y + s_point.origin.y}, 9);
+    } else {
+      graphics_draw_line(ctx, (GPoint){.x = rotated_point.x  * 0.9 + s_point.origin.x, .y = rotated_point.y * 0.9 + s_point.origin.y}, 
+                         (GPoint){.x = rotated_point.x * 1.1 + s_point.origin.x, .y = rotated_point.y * 1.1 + s_point.origin.y});
+    }
+    debug(2, "theta: %x, x: %d, y: %d", (int)theta, rotated_point.x, rotated_point.y);
+
+  }
+  // // gpath_draw_filled(ctx, s_needle_north);
+  // graphics_fill_circle(ctx, s_needle_north->points[0], 6);
+  // gpath_rotate_to(s_needle_north, s_needle_north->rotation + 0xaaa);
 }
 
 
@@ -171,24 +207,25 @@ static void menu_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(s_compass_window);
   GRect bounds = layer_get_bounds(window_layer);
 
-   // Create the bitmap for the background and put it on the screen
-  s_bitmap_layer = bitmap_layer_create(bounds);
-  s_background_bitmap = gbitmap_create_with_resource(RESOURCE_ID_COMPASS_BACKGROUND);
-  bitmap_layer_set_bitmap(s_bitmap_layer, s_background_bitmap);
+  //  // Create the bitmap for the background and put it on the screen
+  // s_bitmap_layer = bitmap_layer_create(bounds);
+  // s_background_bitmap = gbitmap_create_with_resource(RESOURCE_ID_COMPASS_BACKGROUND);
+  // bitmap_layer_set_bitmap(s_bitmap_layer, s_background_bitmap);
 
-  bitmap_layer_set_compositing_mode(s_bitmap_layer, GCompOpSet);
-  layer_add_child(window_layer, bitmap_layer_get_layer(s_bitmap_layer));
+  // bitmap_layer_set_compositing_mode(s_bitmap_layer, GCompOpSet);
+  // layer_add_child(window_layer, bitmap_layer_get_layer(s_bitmap_layer));
 
   s_path_layer = layer_create(bounds);
 
   layer_set_update_proc(s_path_layer, path_layer_update_callback);
   layer_add_child(window_layer, s_path_layer);
 
-  s_needle_north = gpath_create(&NEEDLE_NORTH_POINTS);
+ // s_needle_north = gpath_create(&NEEDLE_NORTH_POINTS);
 
+  s_point.point = GPoint(0, -60);
   // Move the needles to the center of the screen.
-  GPoint center = GPoint(bounds.size.w / 2, bounds.size.h / 2);
-  gpath_move_to(s_needle_north, center);
+  s_point.origin = GPoint(bounds.size.w / 2, bounds.size.h / 2);
+
 
 
   s_heading_layer = text_layer_create(bounds);
@@ -201,7 +238,6 @@ static void menu_window_load(Window *window) {
 static void menu_window_unload(Window *window) {
   if (s_compass_window) {
     text_layer_destroy(s_heading_layer);
-    gpath_destroy(s_needle_north);
     layer_destroy(s_path_layer);
     gbitmap_destroy(s_background_bitmap);
     bitmap_layer_destroy(s_bitmap_layer);
@@ -211,7 +247,6 @@ static void menu_window_unload(Window *window) {
     s_bitmap_layer = NULL;
     s_background_bitmap = NULL;
     s_path_layer = NULL;
-    s_needle_north = NULL;
     s_heading_layer = NULL;
   }
 }
