@@ -58,7 +58,7 @@ void update_heading_data(int32_t bearing, int32_t distance, char *name, bool ini
 void unsuppress_compass() {
   s_compass_suppression = false;
   window_set_click_config_provider(s_compass_window, click_config_subscribe_handler);
-  layer_set_hidden(s_path_layer, false);
+  // layer_set_hidden(s_path_layer, false);
   static char s_heading_buf[64];
   snprintf(s_heading_buf,  ARRAY_LENGTH(s_heading_buf), "%dm", (int)s_destination_data.distance);
   set_text_layer_text(s_heading_buf, ubuntu18);
@@ -67,7 +67,7 @@ void unsuppress_compass() {
 static void suppress_compass(bool suppress_clicks) {
   s_compass_suppression = true;
   if (suppress_clicks) {window_set_click_config_provider(s_compass_window, click_config_unsubscribe_handler);}
-  layer_set_hidden(s_path_layer, true);
+  // layer_set_hidden(s_path_layer, true);
 }
 
 // //! Selection button callback, submit refresh request to phone and display message
@@ -133,27 +133,31 @@ static void set_override_invalid_data() {
   s_override_invalid_data = true;
 }
 
+static void only_unsuppress_compass() {
+  s_compass_suppression = false;
+}
+
 static void compass_heading_handler(CompassHeadingData heading) {
   if (s_compass_suppression) {return;}
 
   static char s_heading_buf[64];
   if (!s_destination_data.hasData) {
-    layer_set_hidden(s_path_layer, true);
+    // layer_set_hidden(s_path_layer, true);
     strncpy(s_heading_buf, "Acquiring target", ARRAY_LENGTH(s_heading_buf));
     set_text_layer_text(s_heading_buf, ubuntu14);
   } else if (!s_override_invalid_data && heading.compass_status <= CompassStatusDataInvalid) {
-    layer_set_hidden(s_path_layer, true);
+    // layer_set_hidden(s_path_layer, true);
     debug(2, "Calibration status: %d", heading.compass_status);
     strncpy(s_heading_buf, "Move wrist to calibrate compass", ARRAY_LENGTH(s_heading_buf));
     set_text_layer_text(s_heading_buf, ubuntu14);
     if(!s_invalid_data_timer) {s_invalid_data_timer = app_timer_register(0, set_override_invalid_data, NULL);}
   } else {
-    layer_set_hidden(s_path_layer, false);
-    int32_t corrected_heading = heading.magnetic_heading + s_destination_data.bearing;
+    // layer_set_hidden(s_path_layer, false);
+    int32_t corrected_heading = (heading.magnetic_heading + s_destination_data.bearing);
     // rotate needle accordingly
     // gpath_rotate_to(s_needle_north, corrected_heading);
-    // s_point.rotation = corrected_heading;
-    s_point.rotation = heading.magnetic_heading;
+    s_point.rotation = corrected_heading;
+    // s_point.rotation = heading.magnetic_heading;
     
     snprintf(s_heading_buf,  ARRAY_LENGTH(s_heading_buf), "%dm", (int)s_destination_data.distance);
     set_text_layer_text(s_heading_buf, ubuntu18);
@@ -161,13 +165,18 @@ static void compass_heading_handler(CompassHeadingData heading) {
     // trigger layer for refresh
     layer_mark_dirty(s_path_layer);
   }
+  // s_compass_suppression = true;
+  // app_timer_register(100, only_unsuppress_compass, NULL);
 }
 
 
 static void path_layer_update_callback(Layer *path_layer, GContext *ctx) {
   if (!s_destination_data.hasData) {return;}
-  graphics_context_set_stroke_width(ctx,3);
-  for (uint16_t i=0; i < 24; i++) {
+  graphics_context_set_stroke_width(ctx,2);
+  const GRect bounds = layer_get_bounds(path_layer);
+  const int32_t radius = (MIN(bounds.size.w, bounds.size.h) / 2);
+  const int tick_count = 24;
+  for (int i=0; i < tick_count; i++) {
     if (i == 0) {
       graphics_context_set_fill_color(ctx, PBL_IF_COLOR_ELSE(GColorRed, GColorWhite));
       graphics_context_set_stroke_color(ctx, PBL_IF_COLOR_ELSE(GColorRed, GColorWhite));
@@ -175,25 +184,41 @@ static void path_layer_update_callback(Layer *path_layer, GContext *ctx) {
       graphics_context_set_fill_color(ctx, GColorWhite);
       graphics_context_set_stroke_color(ctx, GColorWhite);
     }
-    int32_t theta = (s_point.rotation + (0xaaa * i)) % TRIG_MAX_ANGLE;
-    GPoint rotated_point;
-    rotated_point.x = ((cos_lookup(theta) * (s_point.point.x) - 
-                      sin_lookup(theta) * (s_point.point.y)) / TRIG_MAX_RATIO);
-    rotated_point.y = ((sin_lookup(theta) * (s_point.point.x) + 
-                      cos_lookup(theta) * (s_point.point.y)) / TRIG_MAX_RATIO);
+    int32_t theta = s_point.rotation + (TRIG_MAX_ANGLE * i / tick_count);
+    GPoint p0, p1, p2, p3;
     
     if(i % 6 == 0) {
-      graphics_fill_circle(ctx, (GPoint){.x = rotated_point.x + s_point.origin.x, .y = rotated_point.y + s_point.origin.y}, 9);
+      if (i == 0) {
+        p0.x = (int16_t)(sin_lookup(theta) * (radius - 26) / TRIG_MAX_ANGLE) + s_point.origin.x;
+        p0.y = (int16_t)(-cos_lookup(theta) * (radius - 26) / TRIG_MAX_ANGLE) + s_point.origin.y;
+        p1.x = (int16_t)(sin_lookup(theta - (TRIG_MAX_ANGLE * 1 / (tick_count * 2))) * (radius - 16) / TRIG_MAX_ANGLE) + s_point.origin.x;
+        p1.y = (int16_t)(-cos_lookup(theta - (TRIG_MAX_ANGLE * 1 / (tick_count * 2))) * (radius - 16) / TRIG_MAX_ANGLE) + s_point.origin.y;
+        p2.x = (int16_t)(sin_lookup(theta) * (radius) / TRIG_MAX_ANGLE) + s_point.origin.x;
+        p2.y = (int16_t)(-cos_lookup(theta) * (radius) / TRIG_MAX_ANGLE) + s_point.origin.y;
+        p3.x = (int16_t)(sin_lookup(theta + (TRIG_MAX_ANGLE * 1 / (tick_count * 2))) * (radius - 16) / TRIG_MAX_ANGLE) + s_point.origin.x;
+        p3.y = (int16_t)(-cos_lookup(theta + (TRIG_MAX_ANGLE * 1 / (tick_count * 2))) * (radius - 16) / TRIG_MAX_ANGLE) + s_point.origin.y;
+        GPathInfo points = {4,(GPoint[]) {p0, p1, p2, p3},};
+        GPath *path = gpath_create(&points);
+        #if defined(PBL_COLOR)
+          graphics_context_set_fill_color(ctx, GColorRed);
+        #endif
+        gpath_draw_filled(ctx, path);
+        gpath_destroy(path);
+      } else {
+        p0.x = (int16_t)(sin_lookup(theta) * (radius - 10) / TRIG_MAX_ANGLE) + s_point.origin.x;
+        p0.y = (int16_t)(-cos_lookup(theta) * (radius - 10) / TRIG_MAX_ANGLE) + s_point.origin.y;
+        graphics_fill_circle(ctx, p0, 9);
+      }
     } else {
-      graphics_draw_line(ctx, (GPoint){.x = rotated_point.x  * 0.9 + s_point.origin.x, .y = rotated_point.y * 0.9 + s_point.origin.y}, 
-                         (GPoint){.x = rotated_point.x * 1.1 + s_point.origin.x, .y = rotated_point.y * 1.1 + s_point.origin.y});
+      p0.x = (int16_t)(sin_lookup(theta) * (radius - 15) / TRIG_MAX_ANGLE) + s_point.origin.x;
+      p0.y = (int16_t)(-cos_lookup(theta) * (radius - 15) / TRIG_MAX_ANGLE) + s_point.origin.y;
+      p1.x = (int16_t)(sin_lookup(theta) * (radius - 5) / TRIG_MAX_ANGLE) + s_point.origin.x;
+      p1.y = (int16_t)(-cos_lookup(theta) * (radius - 5) / TRIG_MAX_ANGLE) + s_point.origin.y;
+      graphics_draw_line(ctx, p0, p1);
     }
-    debug(2, "theta: %x, x: %d, y: %d", (int)theta, rotated_point.x, rotated_point.y);
+    // debug(2, "theta: %x, x: %d, y: %d", (int)theta, p0.x, p0.y);
 
   }
-  // // gpath_draw_filled(ctx, s_needle_north);
-  // graphics_fill_circle(ctx, s_needle_north->points[0], 6);
-  // gpath_rotate_to(s_needle_north, s_needle_north->rotation + 0xaaa);
 }
 
 
@@ -204,6 +229,7 @@ static void menu_window_load(Window *window) {
   s_destination_data.name[0] = '\0';
   s_destination_data.hasData = false;
   s_override_invalid_data = false;
+  s_invalid_data_timer = NULL;
   Layer *window_layer = window_get_root_layer(s_compass_window);
   GRect bounds = layer_get_bounds(window_layer);
 

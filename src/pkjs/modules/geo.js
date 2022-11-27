@@ -138,7 +138,7 @@ var self = module.exports = {
       clearInterval(self.geoCheckID);
       self.geoCheckID = null;
     }
-    debug(2, err.message);
+    debug(2, (err) ? err.message : "Geo Error");
     appMessage({"TransferType": TransferType.ERROR, "String": "Geolocation error, check phone settings"}); 
   },
   apiError: function (err) {

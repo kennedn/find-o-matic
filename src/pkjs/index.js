@@ -48,7 +48,7 @@ Pebble.addEventListener('showConfiguration', function(e) {
     claySettings = JSON.parse(claySettings);
   } catch(err) {}
 
-  if(Geo.coords.length > 0 && claySettings && 'ClayJSON' in claySettings) {
+  if(Geo.coords.length > 0 && claySettings && claySettings.hasOwnProperty('ClayJSON')) {
     debug(2, "Coords: " + Geo.coords);
     claySettings['ClayJSON'] = JSON.stringify(Geo.coords[0]);
     localStorage.setItem("clay-settings", JSON.stringify(claySettings));
